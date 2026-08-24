@@ -52,6 +52,9 @@ with st.sidebar:
         col1, col2 = st.columns(2)
         xmax = col1.number_input("Z' Max", value=100.0)
         ymax = col2.number_input("-Z'' Max", value=60.0)
+        
+    st.header("3. Procesamiento Visual")
+    normalizar_rs = st.checkbox("Normalizar origen (Restar Rs)", value=False, help="Resta el valor de Rs a toda la curva para que inicie en Z' = 0. Ideal para comparar diámetros (Rct).")
 
 # --- CARGA DE ARCHIVOS ---
 st.subheader("Cargar Archivos de Impedancia (.txt / .csv)")
@@ -70,7 +73,7 @@ if uploaded_files:
             df = pd.read_csv(uploaded_file, sep=';', skiprows=skip_rows, encoding='latin-1', engine='python')
             df.columns = df.columns.str.strip()
             
-            # --- EXTRACCIÓN DE VARIABLES (CORREGIDA PARA EL NUEVO FORMATO) ---
+            # --- EXTRACCIÓN DE VARIABLES ---
             z_real = df.iloc[:, 0].values     # Z' (Real) - Columna 0
             z_img_neg = df.iloc[:, 1].values  # -Z'' (Imaginario Negativo) - Columna 1
             z_mag = df.iloc[:, 4].values      # Z (Magnitud) - Columna 4
@@ -107,12 +110,16 @@ if uploaded_files:
                 'Phase': phase
             }
 
+            # --- NORMALIZACIÓN CONDICIONAL ---
+            z_real_plot = z_real - val_Rs if normalizar_rs else z_real
+            nombre_legend = f"{nombre} (Norm)" if normalizar_rs else nombre
+
             # --- PLOT NYQUIST ---
             fig_nyquist.add_trace(go.Scatter(
-                x=z_real, 
+                x=z_real_plot, 
                 y=z_img_neg, 
                 mode='lines+markers', 
-                name=nombre,
+                name=nombre_legend,
                 marker=dict(size=5)
             ))
 
@@ -123,7 +130,7 @@ if uploaded_files:
             ), secondary_y=False)
 
         except Exception as e:
-            st.error(f"Error procesando {uploaded_file.name}. Verifica que sea formato ';' y columnas estándar. Detalle: {e}")
+            st.error(f"Error procesando {uploaded_file.name}. Verifica el formato. Detalle: {e}")
 
     # --- MOSTRAR RESULTADOS ---
     st.subheader("📊 Parámetros Electroquímicos Estimados")
@@ -133,10 +140,11 @@ if uploaded_files:
     col_graph1, col_graph2 = st.columns(2)
 
     with col_graph1:
-        st.subheader("d. Diagrama de Nyquist (-Z'' vs Z')")
+        titulo_nyquist = "d. Diagrama de Nyquist (-Z'' vs Z') [Normalizado]" if normalizar_rs else "d. Diagrama de Nyquist (-Z'' vs Z')"
+        st.subheader(titulo_nyquist)
         
         layout_args = dict(
-            xaxis_title="Z' (Re) [Ω]",
+            xaxis_title="Z' (Re) [Ω]" if not normalizar_rs else "Z' - Rs (Re) [Ω]",
             yaxis_title="-Z'' (Im) [Ω]",
             template="plotly_white",
             height=550,
@@ -178,7 +186,8 @@ if uploaded_files:
         df_raw = pd.DataFrame()
         for k, v in datos_para_excel.items():
             df_raw[f"Freq_{k}"] = pd.Series(v['Freq'])
-            df_raw[f"Z_Re_{k}"] = pd.Series(v['Z_real'])
+            # Exportamos los datos crudos siempre por seguridad científica
+            df_raw[f"Z_Re_{k}"] = pd.Series(v['Z_real']) 
             df_raw[f"Z_Im_{k}"] = pd.Series(v['Z_img_neg'])
         
         df_raw.to_excel(writer, sheet_name='Datos_EIS', index=False)
@@ -201,7 +210,7 @@ if uploaded_files:
                 'marker':     {'type': 'circle', 'size': 5}
             })
             
-        chart_nyquist.set_title({'name': 'Diagrama de Nyquist'})
+        chart_nyquist.set_title({'name': 'Diagrama de Nyquist (Datos Crudos)'})
         chart_nyquist.set_x_axis({'name': "Z' (Ohm)", 'major_gridlines': {'visible': True}})
         chart_nyquist.set_y_axis({'name': "-Z'' (Ohm)", 'major_gridlines': {'visible': True}})
         
