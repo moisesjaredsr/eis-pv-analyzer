@@ -186,22 +186,26 @@ if uploaded_files:
         df_raw = pd.DataFrame()
         for k, v in datos_para_excel.items():
             df_raw[f"Freq_{k}"] = pd.Series(v['Freq'])
-            # Exportamos los datos crudos siempre por seguridad científica
             df_raw[f"Z_Re_{k}"] = pd.Series(v['Z_real']) 
             df_raw[f"Z_Im_{k}"] = pd.Series(v['Z_img_neg'])
+            df_raw[f"Phase_{k}"] = pd.Series(v['Phase']) # Agregado para Bode
         
         df_raw.to_excel(writer, sheet_name='Datos_EIS', index=False)
         
         workbook = writer.book
         chart_nyquist = workbook.add_chart({'type': 'scatter', 'subtype': 'smooth'})
+        chart_bode = workbook.add_chart({'type': 'scatter', 'subtype': 'smooth'}) # Nuevo gráfico
         
         num_filas = len(df_raw)
         
         for i, nombre in enumerate(datos_para_excel.keys()):
-            col_offset = i * 3
+            col_offset = i * 4 # Modificado a 4 columnas por archivo
+            col_freq = col_offset
             col_z_re = col_offset + 1
             col_z_im = col_offset + 2
+            col_phase = col_offset + 3
             
+            # Serie Nyquist
             chart_nyquist.add_series({
                 'name':       nombre,
                 'categories': ['Datos_EIS', 1, col_z_re, num_filas, col_z_re], 
@@ -210,11 +214,25 @@ if uploaded_files:
                 'marker':     {'type': 'circle', 'size': 5}
             })
             
+            # Serie Bode
+            chart_bode.add_series({
+                'name':       nombre,
+                'categories': ['Datos_EIS', 1, col_freq, num_filas, col_freq], 
+                'values':     ['Datos_EIS', 1, col_phase, num_filas, col_phase], 
+                'line':       {'width': 1.5, 'dash_type': 'dash'},
+                'marker':     {'type': 'none'}
+            })
+            
         chart_nyquist.set_title({'name': 'Diagrama de Nyquist (Datos Crudos)'})
         chart_nyquist.set_x_axis({'name': "Z' (Ohm)", 'major_gridlines': {'visible': True}})
         chart_nyquist.set_y_axis({'name': "-Z'' (Ohm)", 'major_gridlines': {'visible': True}})
         
+        chart_bode.set_title({'name': 'Diagrama de Bode (Fase vs Frecuencia)'})
+        chart_bode.set_x_axis({'name': 'Frecuencia (Hz)', 'log_base': 10, 'major_gridlines': {'visible': True}})
+        chart_bode.set_y_axis({'name': 'Fase (-°)', 'major_gridlines': {'visible': True}})
+        
         ws_res.insert_chart('G2', chart_nyquist, {'x_scale': 1.5, 'y_scale': 1.5})
+        ws_res.insert_chart('P2', chart_bode, {'x_scale': 1.5, 'y_scale': 1.5}) # Insertado a la derecha del Nyquist
 
     st.download_button(
         label="Descargar Reporte EIS (.xlsx)",
