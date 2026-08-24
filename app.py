@@ -24,12 +24,12 @@ st.markdown("---")
 # --- NOTA TÉCNICA INICIAL ---
 with st.expander("📘 NOTA TÉCNICA: ¿Cómo estamos procesando los datos?", expanded=False):
     st.markdown("""
-    **1. Interpretación de Columnas:**
-    Basado en tu archivo `6_V72.txt`, el código asume el formato:
-    * `Columna 2`: Frecuencia (Hz)
-    * `Columna 3`: Z' (Parte Real, Eje X del Nyquist)
-    * `Columna 4`: -Z'' (Parte Imaginaria Negativa, Eje Y del Nyquist)
-    * `Columna 6`: -Phase (Ángulo de fase)
+    **1. Interpretación de Columnas (Actualizada):**
+    Basado en tu nuevo formato de archivo, el código asume:
+    * `Columna 0`: Z' (Parte Real, Eje X del Nyquist)
+    * `Columna 1`: -Z'' (Parte Imaginaria Negativa, Eje Y del Nyquist)
+    * `Columna 5`: -Phase (Ángulo de fase)
+    * `Columna 6`: Frecuencia (Hz)
 
     **2. Geometría de Nyquist:**
     El gráfico de Nyquist se fuerza a una **relación de aspecto 1:1**. 
@@ -44,7 +44,6 @@ with st.expander("📘 NOTA TÉCNICA: ¿Cómo estamos procesando los datos?", ex
 # --- BARRA LATERAL ---
 with st.sidebar:
     st.header("1. Configuración")
-    # A veces los archivos tienen encabezados largos, permitimos saltar filas extra si es necesario
     skip_rows = st.number_input("Filas a saltar (Header)", value=0, min_value=0)
     
     st.header("2. Límites Visuales (Nyquist)")
@@ -62,48 +61,33 @@ if uploaded_files:
     resultados_lista = []
     datos_para_excel = {}
     
-    # Preparamos figuras
-    # 1. Nyquist
     fig_nyquist = go.Figure()
-    # 2. Bode (Doble eje Y: Magnitud y Fase)
     fig_bode = make_subplots(specs=[[{"secondary_y": True}]])
 
     for uploaded_file in uploaded_files:
         try:
-            # --- LECTURA DE DATOS (CRÍTICO: SEPARADOR ;) ---
-            # Tu archivo usa ';' y codificación que soporta el símbolo Ohm (latin-1 o utf-8)
+            # --- LECTURA DE DATOS ---
             df = pd.read_csv(uploaded_file, sep=';', skiprows=skip_rows, encoding='latin-1', engine='python')
-            
-            # Limpieza básica de nombres de columnas (quitar espacios y símbolos raros)
             df.columns = df.columns.str.strip()
             
-            # --- EXTRACCIÓN DE VARIABLES (POR POSICIÓN PARA SEGURIDAD) ---
-            # Asumimos la estructura de tu archivo 6_V72.txt
-            # Index | Freq | Z' | -Z'' | Z | -Phase | Time
-            
-            freq = df.iloc[:, 1].values  # Frecuencia
-            z_real = df.iloc[:, 2].values # Z' (Real)
-            z_img_neg = df.iloc[:, 3].values # -Z'' (Imaginario Negativo)
-            z_mag = df.iloc[:, 4].values  # Magnitud Z
-            phase = df.iloc[:, 5].values  # Fase (negativa en tu archivo)
+            # --- EXTRACCIÓN DE VARIABLES (CORREGIDA PARA EL NUEVO FORMATO) ---
+            z_real = df.iloc[:, 0].values     # Z' (Real) - Columna 0
+            z_img_neg = df.iloc[:, 1].values  # -Z'' (Imaginario Negativo) - Columna 1
+            z_mag = df.iloc[:, 4].values      # Z (Magnitud) - Columna 4
+            phase = df.iloc[:, 5].values      # -Phase (Fase) - Columna 5
+            freq = df.iloc[:, 6].values       # Frecuencia - Columna 6
 
             nombre = uploaded_file.name
 
             # --- ANÁLISIS FÍSICO RÁPIDO ---
-            # 1. Rs (Resistencia Serie): Intercepto a alta frecuencia (Z' mínimo)
-            idx_rs = np.argmin(z_real) # Buscamos el Z' más pequeño (lado izquierdo del arco)
+            idx_rs = np.argmin(z_real) 
             val_Rs = z_real[idx_rs]
             
-            # 2. R_total (Resistencia Total): Intercepto a baja frecuencia
-            # Normalmente es el último punto si la frecuencia baja al final
             idx_low_freq = np.argmin(freq) 
             val_R_total = z_real[idx_low_freq]
 
-            # 3. Rct (Estimado)
             val_Rct = val_R_total - val_Rs
             
-            # 4. Frecuencia Característica (Punto más alto del arco)
-            # Donde -Z'' es máximo
             idx_top = np.argmax(z_img_neg)
             freq_peak = freq[idx_top]
             phase_peak = phase[idx_top]
@@ -116,7 +100,6 @@ if uploaded_files:
                 "Max Phase (°)": round(phase_peak, 2)
             })
 
-            # Guardar para Excel
             datos_para_excel[nombre] = {
                 'Freq': freq,
                 'Z_real': z_real,
@@ -134,27 +117,19 @@ if uploaded_files:
             ))
 
             # --- PLOT BODE ---
-            # Fase (Eje izquierdo)
             fig_bode.add_trace(go.Scatter(
                 x=freq, y=phase, mode='lines', name=f"Phase {nombre}",
                 line=dict(dash='dot')
             ), secondary_y=False)
-            
-            # Magnitud (Eje derecho - Opcional, o solo graficamos fase para limpieza)
-            # Para no saturar, grafiquemos solo Fase vs Frecuencia en este ejemplo, 
-            # o Zreal vs Freq. Vamos a graficar Fase que es lo más diagnóstico.
 
         except Exception as e:
             st.error(f"Error procesando {uploaded_file.name}. Verifica que sea formato ';' y columnas estándar. Detalle: {e}")
 
     # --- MOSTRAR RESULTADOS ---
-    
-    # 1. Tabla de Parámetros
     st.subheader("📊 Parámetros Electroquímicos Estimados")
     df_res = pd.DataFrame(resultados_lista)
     st.dataframe(df_res, use_container_width=True)
 
-    # 2. Gráficos
     col_graph1, col_graph2 = st.columns(2)
 
     with col_graph1:
@@ -165,7 +140,6 @@ if uploaded_files:
             yaxis_title="-Z'' (Im) [Ω]",
             template="plotly_white",
             height=550,
-            # ESTO ES CRUCIAL PARA NYQUIST: ESCALA 1:1
             yaxis=dict(
                 scaleanchor="x",
                 scaleratio=1,
@@ -177,7 +151,6 @@ if uploaded_files:
             layout_args['yaxis_range'] = [0, ymax]
             
         fig_nyquist.update_layout(**layout_args)
-        # Línea cero
         fig_nyquist.add_hline(y=0, line_width=1, line_color="black")
         
         st.plotly_chart(fig_nyquist, use_container_width=True)
@@ -187,7 +160,7 @@ if uploaded_files:
         fig_bode.update_layout(
             xaxis_title="Frecuencia (Hz)",
             yaxis_title="Fase (-°)",
-            xaxis_type="log", # Bode siempre es log en X
+            xaxis_type="log", 
             template="plotly_white",
             height=550
         )
@@ -198,12 +171,10 @@ if uploaded_files:
     
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-        # 1. Hoja Resultados
         df_res.to_excel(writer, sheet_name='Parametros', index=False)
         ws_res = writer.sheets['Parametros']
         ws_res.set_column('A:E', 18)
         
-        # 2. Hoja Datos Crudos
         df_raw = pd.DataFrame()
         for k, v in datos_para_excel.items():
             df_raw[f"Freq_{k}"] = pd.Series(v['Freq'])
@@ -212,14 +183,11 @@ if uploaded_files:
         
         df_raw.to_excel(writer, sheet_name='Datos_EIS', index=False)
         
-        # 3. GRÁFICA EXCEL NATIVA (NYQUIST)
         workbook = writer.book
         chart_nyquist = workbook.add_chart({'type': 'scatter', 'subtype': 'smooth'})
         
         num_filas = len(df_raw)
         
-        # Iterar archivos para agregar series
-        # Estructura en hoja 'Datos_EIS': Freq(0), Z'(1), -Z''(2)  |  Freq(3), Z'(4), -Z''(5)...
         for i, nombre in enumerate(datos_para_excel.keys()):
             col_offset = i * 3
             col_z_re = col_offset + 1
@@ -227,8 +195,8 @@ if uploaded_files:
             
             chart_nyquist.add_series({
                 'name':       nombre,
-                'categories': ['Datos_EIS', 1, col_z_re, num_filas, col_z_re], # X: Z'
-                'values':     ['Datos_EIS', 1, col_z_im, num_filas, col_z_im], # Y: -Z''
+                'categories': ['Datos_EIS', 1, col_z_re, num_filas, col_z_re], 
+                'values':     ['Datos_EIS', 1, col_z_im, num_filas, col_z_im], 
                 'line':       {'width': 1.5},
                 'marker':     {'type': 'circle', 'size': 5}
             })
@@ -237,7 +205,6 @@ if uploaded_files:
         chart_nyquist.set_x_axis({'name': "Z' (Ohm)", 'major_gridlines': {'visible': True}})
         chart_nyquist.set_y_axis({'name': "-Z'' (Ohm)", 'major_gridlines': {'visible': True}})
         
-        # Insertar gráfico en hoja Parametros
         ws_res.insert_chart('G2', chart_nyquist, {'x_scale': 1.5, 'y_scale': 1.5})
 
     st.download_button(
